@@ -61,14 +61,15 @@ print("Test set:", x_test.shape, y_test.shape)
 
 
 """--------------------------- PART 2 & 3 ----------------------------------------------"""
+print("--------------------------- PART 2 & 3 ----------------------------------------------")
 
 # Convert tfidf data into PyTorch tensors
-X_train = torch.tensor(x_train.toarray(), dtype=torch.float32)
-y_train = torch.tensor(y_train, dtype=torch.long)
+x_train_t = torch.tensor(x_train.toarray(), dtype=torch.float32)
+y_train_t = torch.tensor(y_train, dtype=torch.long)
 X_test  = torch.tensor(x_test.toarray(),  dtype=torch.float32)
 y_test  = torch.tensor(y_test,  dtype=torch.long)
 
-train_ds = TensorDataset(X_train, y_train)
+train_ds = TensorDataset(x_train_t, y_train_t)
 train_loader = DataLoader(train_ds, batch_size=64, shuffle=True)
 
 
@@ -110,13 +111,13 @@ def evaluate_model(model, X, Y):
 print("=== Logistic Regression baseline ===")
 start = time.time()
 lr = LogisticRegression(max_iter=1000)
-lr.fit(x_train, y_train)
+lr.fit(x_train_t, y_train_t)
 lr_time = time.time() - start
 lr_acc  = accuracy_score(y_test, lr.predict(x_test))
 print(f"Time: {lr_time:.1f}s — Accuracy: {lr_acc:.4f}")
 
 # Gridsearch for best hyperparameters
-input_dim = X_train.shape[1]
+input_dim = x_train_t.shape[1]
 best = {'acc': 0}
 
 for hidden in ([100], [200,100], [200,100,50]):     # [n] Hidden layer of n neurons
@@ -153,7 +154,7 @@ print(f" Training time: {best['time']:.1f}s")
 
 
 """--------------------------- PART 4 ----------------------------------------------"""
-
+print("--------------------------- PART 4 ----------------------------------------------")
 
 def reset_weights(m):
     '''
@@ -174,32 +175,32 @@ results = {}
 # Set fixed random number seed
 torch.manual_seed(42)
 
-# Combine the original train and test sets for K-Fold
-full_X = torch.tensor(x_tfidf.toarray(), dtype=torch.float32)
-full_y = torch.tensor(y, dtype=torch.long)
 
-dataset = TensorDataset(full_X, full_y)
+train_X = torch.tensor(x_train.toarray(), dtype=torch.float32)
+train_y = torch.tensor(y_train,          dtype=torch.long)
+
+train_dataset = TensorDataset(train_X, train_y)
 
 # Define the K-fold Cross Validator
-kfold = KFold(n_splits=k_folds, shuffle=True)
+kfold = KFold(n_splits=k_folds, shuffle=True, random_state=42)
 
 # Start print
 print('--------------------------------')
 
 # K-fold Cross Validation model evaluation
-for fold, (train_ids, test_ids) in enumerate(kfold.split(dataset)):
+for fold, (train_ids, val_ids) in enumerate(kfold.split(train_dataset)):
 
     train_subsampler = torch.utils.data.SubsetRandomSampler(train_ids)
-    test_subsampler = torch.utils.data.SubsetRandomSampler(test_ids)
+    val_subsampler = torch.utils.data.SubsetRandomSampler(val_ids)
 
     trainloader = torch.utils.data.DataLoader(
-        dataset,
-        batch_size=10,
+        train_dataset,
+        batch_size=64,
         sampler=train_subsampler)
     testloader = torch.utils.data.DataLoader(
-        dataset,
-        batch_size=10,
-        sampler=test_subsampler)
+        train_dataset,
+        batch_size=64,
+        sampler=val_subsampler)
 
     # Create FNN model
     model = FNN(input_dim, hidden_dims=[100, 50])
@@ -210,7 +211,7 @@ for fold, (train_ids, test_ids) in enumerate(kfold.split(dataset)):
     # Training
     for epoch in range(num_epochs):
         model.train()
-        for inputs, targets in enumerate(trainloader, 0):
+        for inputs, targets in trainloader:
             optimizer.zero_grad()
             outputs = model(inputs)
             loss = loss_function(outputs, targets)
@@ -231,41 +232,30 @@ for fold, (train_ids, test_ids) in enumerate(kfold.split(dataset)):
     print(f'Accuracy for fold {fold}: {accuracy:.2f}%')
     results[fold] = accuracy
 
+    # Saving the model
+    save_path = f'./model-fold-{fold}.pth'
+    torch.save(model.state_dict(), save_path)
+
 # Process is complete.
-print('Training process has finished. Saving trained model.')
+print('Training process has finished.')
+avg_val = sum(results.values()) / k_folds
+print(f'Average CV Validation Accuracy: {avg_val:.2f}%')
 
-# Print about testing
-print('Starting testing')
+# Run final evaluation on test set
+final_model = FNN(input_dim, hidden_dims=best['hidden'])
+final_model.apply(reset_weights)
+final_opt = optim.Adam(final_model.parameters(), lr=best['lr'], weight_decay=best['wd'])
+full_train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+train_model(final_model, final_opt, loss_function, full_train_loader, epochs=5)
 
-# Saving the model
-save_path = f'./model-fold-{fold}.pth'
-torch.save(model.state_dict(), save_path)
-
-# Evaluation
-correct, total = 0, 0
-model.eval()
-with torch.no_grad():
-    for xb, yb in testloader:
-        outputs = model(xb)
-        _, preds = torch.max(outputs, dim=1)
-        total += yb.size(0)
-        correct += (preds == yb).sum().item()
-
-acc = 100.0 * correct / total
-print(f'Accuracy for fold {fold}: {acc:.2f}%')
-results[fold] = acc
-
-# Print final results
-print(f'\nK-FOLD CROSS VALIDATION RESULTS FOR {k_folds} FOLDS')
-print('--------------------------------')
-sum = 0.0
-for key, value in results.items():
-    print(f'Fold {key}: {value:.2f}%')
-    sum += value
-print(f'Average: {sum / len(results.items())} %')
+X_test_t = torch.tensor(x_test.toarray(), dtype=torch.float32)
+y_test_t = torch.tensor(y_test,          dtype=torch.long)
+final_acc = evaluate_model(final_model, X_test_t, y_test_t)
+print(f'Final Test Accuracy on held-out 30%: {final_acc*100:.2f}%')
 
 
 """--------------------------- PART 5 ----------------------------------------------"""
+print("--------------------------- PART 5 ----------------------------------------------")
 
 class FNN_Dropout(nn.Module):
     def __init__(self, input_dim, hidden_dims, dropout_prob=None):
