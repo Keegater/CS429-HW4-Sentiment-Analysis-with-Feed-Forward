@@ -73,6 +73,7 @@ train_ds = TensorDataset(X_train, y_train)
 train_loader = DataLoader(train_ds, batch_size=64, shuffle=True)
 
 
+
 class FNN(nn.Module):
     def __init__(self, input_dim, hidden_dims, dropout_prob=0.5):
         super(FNN, self).__init__()
