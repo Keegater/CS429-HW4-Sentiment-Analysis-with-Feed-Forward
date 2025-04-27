@@ -14,7 +14,6 @@ import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
-from fnn_dropout import FNN_Dropout
 
 ## Load and label
 # change the 'basepath' to the directory of the
@@ -75,18 +74,16 @@ train_loader = DataLoader(train_ds, batch_size=64, shuffle=True)
 
 
 class FNN(nn.Module):
-    def __init__(self, input_dim, hidden_dims, dropout_prob=0.5):
+    def __init__(self, input_dim, hidden_dims):
         super(FNN, self).__init__()
         layers = []
         prev = input_dim
         for h in hidden_dims:
             layers.append(nn.Linear(prev, h))
             layers.append(nn.ReLU(inplace=True))
-            layers.append(nn.Dropout(dropout_prob))
             prev = h
         layers.append(nn.Linear(prev, 2))
         self.net = nn.Sequential(*layers)
-
 
     def forward(self, x):
         return self.net(x)
@@ -122,10 +119,10 @@ print(f"Time: {lr_time:.1f}s — Accuracy: {lr_acc:.4f}")
 input_dim = X_train.shape[1]
 best = {'acc': 0}
 
-for hidden in ([100], [200,100], [200,100,50]):
-    for lr_rate in (1e-2, 1e-3):
-        for wd in (0.0, 1e-4):
-            model = FNN(input_dim, hidden, dropout_prob=0.3)
+for hidden in ([100], [200,100], [200,100,50]):     # [n] Hidden layer of n neurons
+    for lr_rate in (1e-2, 1e-3):                    # Learning Rate
+        for wd in (0.0, 1e-4):                      # Weight decay (L2 reg)
+            model = FNN(input_dim, hidden)
             optimizer = optim.Adam(model.parameters(),
                                    lr=lr_rate, weight_decay=wd)
             criterion = nn.CrossEntropyLoss()
@@ -156,6 +153,24 @@ print(f" Training time: {best['time']:.1f}s")
 
 
 ######part 5 ################################
+
+class FNN_Dropout(nn.Module):
+    def __init__(self, input_dim, hidden_dims, dropout_prob=None):
+        super(FNN_Dropout, self).__init__()
+        layers = []
+        prev = input_dim
+        for h in hidden_dims:
+            layers.append(nn.Linear(prev, h))
+            layers.append(nn.ReLU(inplace=True))
+            if dropout_prob is not None:
+                layers.append(nn.Dropout(dropout_prob))
+            prev = h
+        layers.append(nn.Linear(prev, 2))
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.net(x)
+
 
 def bagging_predict(models, X):
     outputs = []
