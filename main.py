@@ -14,6 +14,7 @@ import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
+from fnn_dropout import FNN_Dropout
 
 ## Load and label
 # change the 'basepath' to the directory of the
@@ -149,3 +150,71 @@ print(f" Learning rate: {best['lr']}")
 print(f" Weight decay:  {best['wd']}")
 print(f" Test accuracy: {best['acc']:.4f}")
 print(f" Training time: {best['time']:.1f}s")
+
+
+######part 5 ################################
+
+def bagging_predict(models, X):
+    outputs = []
+    for model in models:
+        model.eval()
+        with torch.no_grad():
+            outputs.append(torch.softmax(model(X), dim=1))
+    avg_output = torch.mean(torch.stack(outputs), dim=0)
+    preds = torch.argmax(avg_output, dim=1)
+    return preds
+
+
+
+print("\n=== Task 5.1: Single Dropout Model vs Baseline ===")
+
+# Train baseline model (NO DROPOUT)
+baseline_model = FNN_Dropout(input_dim, best['hidden'], dropout_prob=None)
+optimizer = optim.Adam(baseline_model.parameters(), lr=best['lr'], weight_decay=best['wd'])
+criterion = nn.CrossEntropyLoss()
+
+start = time.time()
+train_model(baseline_model, optimizer, criterion, train_loader, epochs=5)
+baseline_time = time.time() - start
+baseline_acc = evaluate_model(baseline_model, X_test, y_test)
+print(f"Baseline FNN — Time: {baseline_time:.1f}s — Accuracy: {baseline_acc:.4f}")
+
+# Train single dropout model
+dropout_model = FNN_Dropout(input_dim, best['hidden'], dropout_prob=0.5)
+optimizer = optim.Adam(dropout_model.parameters(), lr=best['lr'], weight_decay=best['wd'])
+criterion = nn.CrossEntropyLoss()
+
+start = time.time()
+train_model(dropout_model, optimizer, criterion, train_loader, epochs=5)
+dropout_time = time.time() - start
+dropout_acc = evaluate_model(dropout_model, X_test, y_test)
+print(f"Single Dropout FNN (p=0.5) — Time: {dropout_time:.1f}s — Accuracy: {dropout_acc:.4f}")
+
+
+print("\nTask 5.2: Bagging ≥5 Dropout Models")
+
+n_models = 5
+bagged_models = []
+start = time.time()
+
+for i in range(n_models):
+    model = FNN_Dropout(input_dim, best['hidden'], dropout_prob=0.5)
+    optimizer = optim.Adam(model.parameters(), lr=best['lr'], weight_decay=best['wd'])
+    criterion = nn.CrossEntropyLoss()
+    train_model(model, optimizer, criterion, train_loader, epochs=5)
+    bagged_models.append(model)
+
+bagging_time = time.time() - start
+
+# Predict with bagging
+bagged_preds = bagging_predict(bagged_models, X_test)
+bagging_acc = (bagged_preds == y_test).float().mean().item()
+print(f"Bagging Dropout Models — Time: {bagging_time:.1f}s — Accuracy: {bagging_acc:.4f}")
+
+
+print("\n Final Task 5 Comparison")
+print(f"{'Model':30s} {'Time (s)':>10s} {'Accuracy':>10s}")
+print("-" * 50)
+print(f"{'Baseline FNN (no dropout)':30s} {baseline_time:10.1f} {baseline_acc:10.4f}")
+print(f"{'Single Dropout FNN (p=0.5)':30s} {dropout_time:10.1f} {dropout_acc:10.4f}")
+print(f"{'Bagging Dropout FNNs (5 models)':30s} {bagging_time:10.1f} {bagging_acc:10.4f}")
