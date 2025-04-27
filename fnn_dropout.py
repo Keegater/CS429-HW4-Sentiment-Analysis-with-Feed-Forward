@@ -17,5 +17,6 @@ class FNN_Dropout(nn.Module):
         self.net = nn.Sequential(*layers)
 
 
+
     def forward(self, x):
         return self.net(x)
