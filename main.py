@@ -6,7 +6,7 @@ import sys
 import re
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.feature_extraction.text import TfidfTransformer
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, KFold
 import time
 import torch
 import torch.nn as nn
@@ -152,7 +152,120 @@ print(f" Test accuracy: {best['acc']:.4f}")
 print(f" Training time: {best['time']:.1f}s")
 
 
-######part 5 ################################
+"""--------------------------- PART 4 ----------------------------------------------"""
+
+
+def reset_weights(m):
+    '''
+      Try resetting model weights to avoid
+      weight leakage.
+    '''
+    for layer in m.children():
+        if hasattr(layer, 'reset_parameters'):
+            # print(f'Reset trainable parameters of layer = {layer}')
+            layer.reset_parameters()
+
+
+k_folds = 5
+num_epochs = 5
+loss_function = nn.CrossEntropyLoss()
+results = {}
+
+# Set fixed random number seed
+torch.manual_seed(42)
+
+# Combine the original train and test sets for K-Fold
+full_X = torch.tensor(x_tfidf.toarray(), dtype=torch.float32)
+full_y = torch.tensor(y, dtype=torch.long)
+
+dataset = TensorDataset(full_X, full_y)
+
+# Define the K-fold Cross Validator
+kfold = KFold(n_splits=k_folds, shuffle=True)
+
+# Start print
+print('--------------------------------')
+
+# K-fold Cross Validation model evaluation
+for fold, (train_ids, test_ids) in enumerate(kfold.split(dataset)):
+
+    train_subsampler = torch.utils.data.SubsetRandomSampler(train_ids)
+    test_subsampler = torch.utils.data.SubsetRandomSampler(test_ids)
+
+    trainloader = torch.utils.data.DataLoader(
+        dataset,
+        batch_size=10,
+        sampler=train_subsampler)
+    testloader = torch.utils.data.DataLoader(
+        dataset,
+        batch_size=10,
+        sampler=test_subsampler)
+
+    # Create FNN model
+    model = FNN(input_dim, hidden_dims=[100, 50])
+    model.apply(reset_weights)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+
+    # Training
+    for epoch in range(num_epochs):
+        model.train()
+        for inputs, targets in enumerate(trainloader, 0):
+            optimizer.zero_grad()
+            outputs = model(inputs)
+            loss = loss_function(outputs, targets)
+            loss.backward()
+            optimizer.step()
+
+    # Evaluation
+    model.eval()
+    correct, total = 0, 0
+    with torch.no_grad():
+        for inputs, targets in testloader:
+            outputs = model(inputs)
+            _, predicted = torch.max(outputs.data, 1)
+            total += targets.size(0)
+            correct += (predicted == targets).sum().item()
+
+    accuracy = 100.0 * correct / total
+    print(f'Accuracy for fold {fold}: {accuracy:.2f}%')
+    results[fold] = accuracy
+
+# Process is complete.
+print('Training process has finished. Saving trained model.')
+
+# Print about testing
+print('Starting testing')
+
+# Saving the model
+save_path = f'./model-fold-{fold}.pth'
+torch.save(model.state_dict(), save_path)
+
+# Evaluation
+correct, total = 0, 0
+model.eval()
+with torch.no_grad():
+    for xb, yb in testloader:
+        outputs = model(xb)
+        _, preds = torch.max(outputs, dim=1)
+        total += yb.size(0)
+        correct += (preds == yb).sum().item()
+
+acc = 100.0 * correct / total
+print(f'Accuracy for fold {fold}: {acc:.2f}%')
+results[fold] = acc
+
+# Print final results
+print(f'\nK-FOLD CROSS VALIDATION RESULTS FOR {k_folds} FOLDS')
+print('--------------------------------')
+sum = 0.0
+for key, value in results.items():
+    print(f'Fold {key}: {value:.2f}%')
+    sum += value
+print(f'Average: {sum / len(results.items())} %')
+
+
+"""--------------------------- PART 5 ----------------------------------------------"""
 
 class FNN_Dropout(nn.Module):
     def __init__(self, input_dim, hidden_dims, dropout_prob=None):
@@ -173,12 +286,12 @@ class FNN_Dropout(nn.Module):
 
 
 def bagging_predict(models, X):
-    outputs = []
+    bagging_outputs = []
     for model in models:
         model.eval()
         with torch.no_grad():
-            outputs.append(torch.softmax(model(X), dim=1))
-    avg_output = torch.mean(torch.stack(outputs), dim=0)
+            bagging_outputs.append(torch.softmax(model(X), dim=1))
+    avg_output = torch.mean(torch.stack(bagging_outputs), dim=0)
     preds = torch.argmax(avg_output, dim=1)
     return preds
 
@@ -188,23 +301,23 @@ print("\n=== Task 5.1: Single Dropout Model vs Baseline ===")
 
 # Train baseline model (NO DROPOUT)
 baseline_model = FNN_Dropout(input_dim, best['hidden'], dropout_prob=None)
-optimizer = optim.Adam(baseline_model.parameters(), lr=best['lr'], weight_decay=best['wd'])
-criterion = nn.CrossEntropyLoss()
+baseline_optimizer = optim.Adam(baseline_model.parameters(), lr=best['lr'], weight_decay=best['wd'])
+baseline_criterion = nn.CrossEntropyLoss()
 
-start = time.time()
-train_model(baseline_model, optimizer, criterion, train_loader, epochs=5)
-baseline_time = time.time() - start
+baseline_start = time.time()
+train_model(baseline_model, baseline_optimizer, baseline_criterion, train_loader, epochs=5)
+baseline_time = time.time() - baseline_start
 baseline_acc = evaluate_model(baseline_model, X_test, y_test)
 print(f"Baseline FNN — Time: {baseline_time:.1f}s — Accuracy: {baseline_acc:.4f}")
 
 # Train single dropout model
 dropout_model = FNN_Dropout(input_dim, best['hidden'], dropout_prob=0.5)
-optimizer = optim.Adam(dropout_model.parameters(), lr=best['lr'], weight_decay=best['wd'])
-criterion = nn.CrossEntropyLoss()
+dropout_optimizer = optim.Adam(dropout_model.parameters(), lr=best['lr'], weight_decay=best['wd'])
+dropout_criterion = nn.CrossEntropyLoss()
 
-start = time.time()
-train_model(dropout_model, optimizer, criterion, train_loader, epochs=5)
-dropout_time = time.time() - start
+dropout_start = time.time()
+train_model(dropout_model, dropout_optimizer, dropout_criterion, train_loader, epochs=5)
+dropout_time = time.time() - dropout_start
 dropout_acc = evaluate_model(dropout_model, X_test, y_test)
 print(f"Single Dropout FNN (p=0.5) — Time: {dropout_time:.1f}s — Accuracy: {dropout_acc:.4f}")
 
