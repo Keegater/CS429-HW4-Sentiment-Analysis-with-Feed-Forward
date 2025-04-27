@@ -73,7 +73,6 @@ train_ds = TensorDataset(x_train_t, y_train_t)
 train_loader = DataLoader(train_ds, batch_size=64, shuffle=True)
 
 
-
 class FNN(nn.Module):
     def __init__(self, input_dim, hidden_dims):
         super(FNN, self).__init__()
@@ -174,38 +173,27 @@ results = {}
 
 # Set fixed random number seed
 torch.manual_seed(42)
-
-
 train_X = torch.tensor(x_train.toarray(), dtype=torch.float32)
 train_y = torch.tensor(y_train,          dtype=torch.long)
-
 train_dataset = TensorDataset(train_X, train_y)
+
+# start overall timer
+pt4_overall_timer = time.time()
 
 # Define the K-fold Cross Validator
 kfold = KFold(n_splits=k_folds, shuffle=True, random_state=42)
-
-# Start print
-print('--------------------------------')
 
 # K-fold Cross Validation model evaluation
 for fold, (train_ids, val_ids) in enumerate(kfold.split(train_dataset)):
 
     train_subsampler = torch.utils.data.SubsetRandomSampler(train_ids)
     val_subsampler = torch.utils.data.SubsetRandomSampler(val_ids)
-
-    trainloader = torch.utils.data.DataLoader(
-        train_dataset,
-        batch_size=64,
-        sampler=train_subsampler)
-    testloader = torch.utils.data.DataLoader(
-        train_dataset,
-        batch_size=64,
-        sampler=val_subsampler)
+    trainloader = torch.utils.data.DataLoader(train_dataset, batch_size=64, sampler=train_subsampler)
+    testloader = torch.utils.data.DataLoader(train_dataset, batch_size=64, sampler=val_subsampler)
 
     # Create FNN model
     model = FNN(input_dim, hidden_dims=[100, 50])
     model.apply(reset_weights)
-
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
     # Training
@@ -237,9 +225,11 @@ for fold, (train_ids, val_ids) in enumerate(kfold.split(train_dataset)):
     torch.save(model.state_dict(), save_path)
 
 # Process is complete.
+pt4_total_time = time.time() - pt4_overall_timer
 print('Training process has finished.')
 avg_val = sum(results.values()) / k_folds
 print(f'Average CV Validation Accuracy: {avg_val:.2f}%')
+print(f"CV completed in {pt4_total_time:.1f}s …")
 
 # Run final evaluation on test set
 final_model = FNN(input_dim, hidden_dims=best['hidden'])
