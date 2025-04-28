@@ -110,7 +110,7 @@ def evaluate_model(model, X, Y):
 print("=== Logistic Regression baseline ===")
 start = time.time()
 lr = LogisticRegression(max_iter=1000)
-lr.fit(x_train_t, y_train_t)
+lr.fit(x_train, y_train)
 lr_time = time.time() - start
 lr_acc  = accuracy_score(y_test, lr.predict(x_test))
 print(f"Time: {lr_time:.1f}s — Accuracy: {lr_acc:.4f}")
