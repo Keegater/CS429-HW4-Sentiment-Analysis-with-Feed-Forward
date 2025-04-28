@@ -119,9 +119,9 @@ print(f"Time: {lr_time:.1f}s — Accuracy: {lr_acc:.4f}")
 input_dim = x_train_t.shape[1]
 best = {'acc': 0}
 
-for hidden in ([100], [200,100], [200,100,50]):     # [n] Hidden layer of n neurons
-    for lr_rate in (1e-2, 1e-3):                    # Learning Rate
-        for wd in (0.0, 1e-4):                      # Weight decay (L2 reg)
+for hidden in ([100],[1000],[500,100],[500,200,100]):     # [n] Hidden layer of n neurons
+    for lr_rate in (1e-5, 1e-3):                    # Learning Rate
+        for wd in (1e-2, 1e-4):                      # Weight decay (L2 reg)
             model = FNN(input_dim, hidden)
             optimizer = optim.Adam(model.parameters(),
                                    lr=lr_rate, weight_decay=wd)
@@ -192,9 +192,9 @@ for fold, (train_ids, val_ids) in enumerate(kfold.split(train_dataset)):
     testloader = torch.utils.data.DataLoader(train_dataset, batch_size=64, sampler=val_subsampler)
 
     # Create FNN model
-    model = FNN(input_dim, hidden_dims=[100, 50])
+    model = FNN(input_dim, hidden_dims=best['hidden'])
     model.apply(reset_weights)
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=best['lr'], weight_decay=best['wd'])
 
     # Training
     for epoch in range(num_epochs):
@@ -291,7 +291,7 @@ baseline_acc = evaluate_model(baseline_model, X_test, y_test)
 print(f"Baseline FNN — Time: {baseline_time:.1f}s — Accuracy: {baseline_acc:.4f}")
 
 # Train single dropout model
-dropout_model = FNN_Dropout(input_dim, best['hidden'], dropout_prob=0.5)
+dropout_model = FNN_Dropout(input_dim, best['hidden'], dropout_prob=0.3)
 dropout_optimizer = optim.Adam(dropout_model.parameters(), lr=best['lr'], weight_decay=best['wd'])
 dropout_criterion = nn.CrossEntropyLoss()
 
@@ -299,7 +299,7 @@ dropout_start = time.time()
 train_model(dropout_model, dropout_optimizer, dropout_criterion, train_loader, epochs=5)
 dropout_time = time.time() - dropout_start
 dropout_acc = evaluate_model(dropout_model, X_test, y_test)
-print(f"Single Dropout FNN (p=0.5) — Time: {dropout_time:.1f}s — Accuracy: {dropout_acc:.4f}")
+print(f"Single Dropout FNN (p=0.3) — Time: {dropout_time:.1f}s — Accuracy: {dropout_acc:.4f}")
 
 
 print("\nTask 5.2: Bagging ≥5 Dropout Models")
@@ -309,7 +309,7 @@ bagged_models = []
 start = time.time()
 
 for i in range(n_models):
-    model = FNN_Dropout(input_dim, best['hidden'], dropout_prob=0.5)
+    model = FNN_Dropout(input_dim, best['hidden'], dropout_prob=0.3)
     optimizer = optim.Adam(model.parameters(), lr=best['lr'], weight_decay=best['wd'])
     criterion = nn.CrossEntropyLoss()
     train_model(model, optimizer, criterion, train_loader, epochs=5)
@@ -327,5 +327,5 @@ print("\n Final Task 5 Comparison")
 print(f"{'Model':30s} {'Time (s)':>10s} {'Accuracy':>10s}")
 print("-" * 50)
 print(f"{'Baseline FNN (no dropout)':30s} {baseline_time:10.1f} {baseline_acc:10.4f}")
-print(f"{'Single Dropout FNN (p=0.5)':30s} {dropout_time:10.1f} {dropout_acc:10.4f}")
+print(f"{'Single Dropout FNN (p=0.3)':30s} {dropout_time:10.1f} {dropout_acc:10.4f}")
 print(f"{'Bagging Dropout FNNs (5 models)':30s} {bagging_time:10.1f} {bagging_acc:10.4f}")
